@@ -62,11 +62,11 @@ gii_final <- gii_pivoted %>%
 #shapefile has 2 digit ISOs
 # gii_final has 3 digit ISOs
 
-# Create a 2-digit ISO column in the gii_final df
+# Create a 2-digit ISO column in the gii_final df 
 gii_final <- gii_final %>%
   mutate(iso2 = countrycode(country_iso_code, origin = "iso3c", destination = "iso2c"))
 
-# Left join to shapefile df
+# Left join GII values onto shapefile
 shapefile_joined <- shapefile %>%
   left_join(., gii_final, by = c("iso" = "iso2"))%>%
   select(country.x, iso, gii_2010, gii_2019, diff, geometry)%>%
