@@ -1,0 +1,109 @@
+---
+title: "Global Gender Inequality Index: 2010-2019"
+author: "Jess Ebner-Statt"
+date: "2024-10-26"
+output: 
+  html_document:
+    theme:
+      bootswatch: minty
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Introduction and Data Sources
+This document joins global spatial data with UN Human Development Data, creating a map of changes in the HDR Gender Inequality Index between 2010 and 2019.
+
+Data sources are listed below for reproducibility purposes:
+
+* **Global country shapefile**: World Countries Generalized geojson from [ArcGIS Hub](https://hub.arcgis.com/datasets/2b93b06dc0dc4e809d3c8db5cb96ba69_0/explore?location=-0.249646%2C0.000000%2C1.41).
+* **Gender Inequality Index**: Excel file from the UNDP Human Development Reports' [Documentation and Downloads page](https://hdr.undp.org/data-center/documentation-and-downloads).
+  * Filters used:
+    * **Index:** GII
+    * **Indicator:** Gender Inequality Index (value)
+    * **Year:** 2010, 2019
+    * **Group/Region/Country:** no filter applied
+  * This was converted to a CSV locally, but no other formatting was changed before cleaning in R.
+  
+### Setting up R Environment
+```{r Setting Up, message=FALSE, warning=FALSE, results='hide'}
+#Load libraries
+library(tidyverse)
+library(countrycode)
+library(sf)
+library(janitor)
+library(here)
+
+#Load in data
+shapefile <- st_read(here("homework4", "world_countries.geojson")) %>%
+  clean_names(.) #WGS84
+
+gii <- read_csv(here("homework4", "hdr-data.csv")) %>%
+  clean_names()
+```
+### Inspecting and Cleaning GII Data
+```{r Cleaning }
+# Consider variable types
+gii_data_types <- gii %>%
+  summarise_all(class) %>%
+  pivot_longer(everything(),
+    names_to = "variable",
+    values_to = "variable_type")
+# All looks sensible
+rm(gii_data_types)
+
+# Drop redundant columns
+gii_clean <- gii %>%
+  dplyr::select(-index_code, -index, -dimension, -indicator_code,
+                -indicator, -note)
+
+# Remove any ISO codes beginning with "ZZ"; these are statistics for whole continents, HDI levels, or the globe
+# (ChatGPT helped with the str_starts function)
+gii_clean <- gii_clean %>%
+  filter(., !str_starts(country_iso_code, "ZZ"))
+
+# Pivot the table to allow easy comparison of 2010 and 2019 values
+gii_pivoted <- gii_clean %>%
+  pivot_wider(., names_from = year, values_from = value, names_prefix = "gii_")
+# Count distinct countries in original dataset, to make sure this has been done properly
+gii %>%
+  filter(., !str_starts(country_iso_code, "ZZ")) %>%
+  distinct(country_iso_code) %>%
+  nrow() 
+#165 - this matches. Note that many countries are missing
+```
+*n.b. Removing the aggregate statistics was not technically necessary, as these are going to be lost when joined to the spatial data anyway. Nevertheless, I removed them to create a "cleaner" GII dataset which can be analysed independently.*
+
+### Calculate the Difference Metric
+```{r Calculating Difference}
+# Some countries have null values for one year
+# Difference can therefore not be calculated for these, but I have kept them in the code anyway.
+# Whoever is mapping can choose to change this if they wish.
+gii_final <- gii_pivoted %>%
+  mutate(diff = gii_2019 - gii_2010)
+head(gii_final, 20)
+```
+Note that negative numbers in the `diff` column constitute a *decrease* in gender inequality over time.
+
+### Joining GII data to the Shapefile
+```{r Joining}
+# shapefile has 2 digit ISOs
+# gii_final has 3 digit ISOs
+
+# Create a 2-digit ISO column in the gii_final df 
+gii_final <- gii_final %>%
+  mutate(iso2 = countrycode(country_iso_code, origin = "iso3c", destination = "iso2c"))
+
+# Left join GII values onto shapefile (thereby preserving all countries in the final map)
+shapefile_joined <- shapefile %>%
+  left_join(., gii_final, by = c("iso" = "iso2"))%>%
+  select(country.x, iso, gii_2010, gii_2019, diff, geometry)%>%
+  rename(country = country.x)
+```
+*n.b. The countrycode package could also be used to connect countries to their parent countries (e.g. Puerto Rico -> US), but I'm not sure whether this is needed in the context of this homework.*
+
+### Mapping
+```{r Plot}
+#Leaving this space empty for the person who is going to be creating the map as part of next week's homework
+```
